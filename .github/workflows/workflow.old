@@ -1,0 +1,88 @@
+name: workflow-CI
+
+on:
+   push:
+       branches: [ main ]
+   pull_request:
+       branches: [ main ]
+
+env:
+  nombre_de_variable: variable
+  nombre_de_variable1: variable1
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [3.9]
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+# define las variables de entorno push o pull request
+      - name: Set env variables
+        if: github.event_name == 'push'
+        run: |
+          echo "BRANCH_NAME=${{ github.head_ref }} | awk -F/ '{print $2}' | awk -F'_' '{print tolower($1}')>> $GITHUB_ENV"
+
+# install dependencies y libsass2-dev
+      - name: Install libsasl2-dev
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsasl2-dev
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+#     - name: Run pytest
+#      run: |
+#       pip install pytest pytest-cov
+#      pytest ./tests/test_database_manager.py --cov --cov-report=term --cov-report=html --cov-report=xml
+#        run: python -m pytest --cov --cov-report=term --cov-report=html --cov-report=xml
+
+
+# deploy to s3
+      - name: Configure AWS Credentials
+        if: github.ref == 'refs/heads/"main"' && github.event_name == 'push'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          AWS_S3_BUCKET: ${{ secrets.AWS_S3_BUCKET }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+
+      - name: Deploy to S3
+        if: github.ref == 'refs/heads/master'
+        run: |
+          aws s3 cp sql --recursive  s3://my-s3-test-website-bucket 
+          aws s3 cp dags --recursive  s3://my-s3-test-website-bucket
+
+# generate reports
+      - name: Generate reports
+        if: github.ref == 'refs/heads/"main"' && github.event_name == 'push'
+        # if: failure() || success()
+        run: reports-publisher
+
+# security checks
+      - name: install Security check
+        run : |
+          bash <(curl -s https://raw.githubusercontent.com/homebrew/install/master/install.sh)
+# Ejecutar en local
+#      - name : Run security checks
+#        continue-on-error: true
+#        run:  vulcan-local -c vulcan.yaml
+
+      - name: Output event details
+        run: echo "${{ toJSON(github.event) }}"
+          
+          
+          
+          
+          
+        
+
